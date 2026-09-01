@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Lista de la compra</title>
+<link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="wrap">
+    <header class="top">
+      <div>
+        <div class="eyebrow">Próxima compra</div>
+        <h1>Lista de la compra 🛒</h1>
+      </div>
+    </header>
+
+    <nav class="tabs">
+      <a href="index.html">Nevera</a>
+      <a href="lista.html" class="active">Lista de la compra</a>
+    </nav>
+
+    <div id="shelf" class="shelf">
+      <div class="empty">Cargando…</div>
+    </div>
+
+    <div class="add-card">
+      <h2>+ Añadir a la lista</h2>
+      <form id="add-form">
+        <div class="field-row">
+          <input type="text" class="emoji-input" id="f-emoji" placeholder="🛒" maxlength="4" />
+          <input type="text" id="f-nombre" placeholder="Nombre (ej. Papel higiénico)" required />
+        </div>
+        <button type="submit" class="primary">Añadir</button>
+      </form>
+      <button class="ghost" id="vaciar">Vaciar comprados</button>
+    </div>
+
+    <a href="index.html" class="foot-link">← Volver a la nevera</a>
+  </div>
+
+<script type="module">
+  import { supabase } from "./client.js";
+
+  const shelf = document.getElementById("shelf");
+
+  async function cargar() {
+    const { data, error } = await supabase
+      .from("lista_compra")
+      .select("*")
+      .order("comprado", { ascending: true })
+      .order("creado_en", { ascending: true });
+
+    if (error) {
+      shelf.innerHTML = `<div class="empty">Error cargando datos.<br>Revisa config.js (URL/clave de Supabase).</div>`;
+      console.error(error);
+      return;
+    }
+
+    if (!data || data.length === 0) {
+      shelf.innerHTML = `<div class="empty">Tu lista está vacía. ¡Buen trabajo! 🎉</div>`;
+      return;
+    }
+
+    shelf.innerHTML = data.map(rowHtml).join("");
+
+    data.forEach((item) => {
+      document
+        .querySelector(`[data-id="${item.id}"] .item-check`)
+        .addEventListener("change", (e) => toggleComprado(item.id, e.target.checked));
+    });
+  }
+
+  function rowHtml(item) {
+    return `
+      <div class="row ${item.comprado ? "comprado" : ""}" data-id="${item.id}">
+        <input type="checkbox" class="item-check" ${item.comprado ? "checked" : ""} />
+        <div class="emoji">${item.emoji || "🛒"}</div>
+        <div class="info">
+          <div class="nombre">${escapeHtml(item.nombre)}</div>
+        </div>
+      </div>
+    `;
+  }
+
+  async function toggleComprado(id, comprado) {
+    await supabase.from("lista_compra").update({ comprado }).eq("id", id);
+    cargar();
+  }
+
+  function escapeHtml(str) {
+    const d = document.createElement("div");
+    d.textContent = str;
+    return d.innerHTML;
+  }
+
+  document.getElementById("add-form").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const nombre = document.getElementById("f-nombre").value.trim();
+    const emoji = document.getElementById("f-emoji").value.trim() || "🛒";
+    if (!nombre) return;
+
+    const { error } = await supabase.from("lista_compra").insert({ nombre, emoji });
+    if (error) {
+      alert("No se pudo añadir. Revisa la consola.");
+      console.error(error);
+      return;
+    }
+    e.target.reset();
+    cargar();
+  });
+
+  document.getElementById("vaciar").addEventListener("click", async () => {
+    if (!confirm("¿Eliminar todos los productos ya comprados de la lista?")) return;
+    await supabase.from("lista_compra").delete().eq("comprado", true);
+    cargar();
+  });
+
+  cargar();
+</script>
+</body>
+</html>
