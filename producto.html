@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Actualizar producto</title>
+<link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="center-wrap">
+    <div class="tag-card" id="card">
+      <div class="big-emoji">⏳</div>
+      <p class="status-line">Actualizando tu nevera…</p>
+    </div>
+  </div>
+
+<script type="module">
+  import { supabase } from "./client.js";
+
+  const card = document.getElementById("card");
+  const params = new URLSearchParams(window.location.search);
+  const slug = params.get("slug");
+  // accion: "agotado" (por defecto) o "poco" — se define al grabar la pegatina NFC
+  const accion = params.get("accion") === "poco" ? "poco" : "agotado";
+
+  async function iniciar() {
+    if (!slug) {
+      card.innerHTML = errorHtml("Este enlace no incluye ningún producto (falta ?slug=...).");
+      return;
+    }
+
+    const { data: producto, error } = await supabase
+      .from("productos")
+      .select("*")
+      .eq("slug", slug)
+      .maybeSingle();
+
+    if (error || !producto) {
+      card.innerHTML = errorHtml(`No encuentro ningún producto con el identificador "${slug}". Revisa el enlace grabado en la pegatina.`);
+      return;
+    }
+
+    await supabase.from("productos").update({ estado: accion }).eq("id", producto.id);
+
+    const mensajeEstado = accion === "poco" ? "Marcado como <b>queda poco</b>." : "Marcado como <b>se acabó</b>.";
+
+    card.innerHTML = `
+      <div class="big-emoji">${producto.emoji || "📦"}</div>
+      <h1>${escapeHtml(producto.nombre)}</h1>
+      <p class="status-line">${mensajeEstado}</p>
+      <p style="font-weight:600; font-size:14px; margin-bottom:14px;">¿Añadir a la lista de la compra?</p>
+      <div class="choice-row">
+        <button class="primary" id="btn-si">Sí, añadir</button>
+        <button class="no-btn" id="btn-no">No</button>
+      </div>
+      <div id="resultado" style="margin-top:14px;"></div>
+      <a href="index.html" class="foot-link">← Ver mi nevera</a>
+    `;
+
+    document.getElementById("btn-si").addEventListener("click", async () => {
+      await supabase.from("lista_compra").insert({ nombre: producto.nombre, emoji: producto.emoji });
+      document.getElementById("resultado").innerHTML = `<div class="result-msg">✅ Añadido a la lista de la compra</div>`;
+      document.getElementById("btn-si").disabled = true;
+      document.getElementById("btn-no").disabled = true;
+    });
+
+    document.getElementById("btn-no").addEventListener("click", () => {
+      document.getElementById("resultado").innerHTML = `<div class="result-msg" style="color:var(--ink-soft)">Vale, no se ha añadido.</div>`;
+      document.getElementById("btn-si").disabled = true;
+      document.getElementById("btn-no").disabled = true;
+    });
+  }
+
+  function errorHtml(msg) {
+    return `
+      <div class="big-emoji">⚠️</div>
+      <h1>Ups</h1>
+      <p class="error-msg">${escapeHtml(msg)}</p>
+      <a href="index.html" class="foot-link">← Ver mi nevera</a>
+    `;
+  }
+
+  function escapeHtml(str) {
+    const d = document.createElement("div");
+    d.textContent = str;
+    return d.innerHTML;
+  }
+
+  iniciar();
+</script>
+</body>
+</html>

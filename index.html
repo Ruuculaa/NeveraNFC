@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Mi Nevera</title>
+<link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="wrap">
+    <header class="top">
+      <div>
+        <div class="eyebrow">Inventario</div>
+        <h1>Mi Nevera 🧊</h1>
+      </div>
+    </header>
+
+    <nav class="tabs">
+      <a href="index.html" class="active">Nevera</a>
+      <a href="lista.html">Lista de la compra</a>
+    </nav>
+
+    <div id="shelf" class="shelf">
+      <div class="empty">Cargando…</div>
+    </div>
+
+    <div class="add-card">
+      <h2>+ Añadir producto</h2>
+      <form id="add-form">
+        <div class="field-row">
+          <input type="text" class="emoji-input" id="f-emoji" placeholder="📦" maxlength="4" />
+          <input type="text" id="f-nombre" placeholder="Nombre (ej. Leche)" required />
+        </div>
+        <div class="field-row">
+          <input type="text" id="f-categoria" placeholder="Categoría (opcional, ej. Lácteos)" />
+        </div>
+        <button type="submit" class="primary">Añadir a la nevera</button>
+      </form>
+    </div>
+
+    <a href="lista.html" class="foot-link">Ver lista de la compra →</a>
+  </div>
+
+<script type="module">
+  import { supabase, slugify, ESTADOS } from "./client.js";
+
+  const shelf = document.getElementById("shelf");
+
+  async function cargar() {
+    const { data, error } = await supabase
+      .from("productos")
+      .select("*")
+      .order("estado", { ascending: true }) // agotado < poco < stock alfabéticamente no es ideal, ordenamos manual abajo
+      .order("nombre", { ascending: true });
+
+    if (error) {
+      shelf.innerHTML = `<div class="empty">Error cargando datos.<br>Revisa config.js (URL/clave de Supabase).</div>`;
+      console.error(error);
+      return;
+    }
+
+    if (!data || data.length === 0) {
+      shelf.innerHTML = `<div class="empty">Tu nevera está vacía.<br>Añade tu primer producto abajo 👇</div>`;
+      return;
+    }
+
+    const orden = { agotado: 0, poco: 1, stock: 2 };
+    data.sort((a, b) => orden[a.estado] - orden[b.estado] || a.nombre.localeCompare(b.nombre));
+
+    shelf.innerHTML = data.map(rowHtml).join("");
+
+    data.forEach((p) => {
+      document.querySelectorAll(`[data-id="${p.id}"] .dot-btn`).forEach((btn) => {
+        btn.addEventListener("click", () => cambiarEstado(p.id, btn.dataset.estado));
+      });
+      document.querySelector(`[data-id="${p.id}"] .del`).addEventListener("click", () => borrar(p.id));
+    });
+  }
+
+  function rowHtml(p) {
+    return `
+      <div class="row" data-id="${p.id}">
+        <div class="emoji">${p.emoji || "📦"}</div>
+        <div class="info">
+          <div class="nombre">${escapeHtml(p.nombre)}</div>
+          ${p.categoria ? `<div class="categoria">${escapeHtml(p.categoria)}</div>` : ""}
+        </div>
+        <span class="sticker ${p.estado}">${ESTADOS[p.estado]}</span>
+        <div class="actions">
+          <button class="dot-btn stock" data-estado="stock" title="Marcar: en la nevera">●</button>
+          <button class="dot-btn poco" data-estado="poco" title="Marcar: queda poco">●</button>
+          <button class="dot-btn agotado" data-estado="agotado" title="Marcar: se acabó">●</button>
+          <button class="dot-btn del" title="Eliminar producto">✕</button>
+        </div>
+      </div>
+    `;
+  }
+
+  async function cambiarEstado(id, estado) {
+    await supabase.from("productos").update({ estado }).eq("id", id);
+    cargar();
+  }
+
+  async function borrar(id) {
+    if (!confirm("¿Eliminar este producto de la nevera?")) return;
+    await supabase.from("productos").delete().eq("id", id);
+    cargar();
+  }
+
+  function escapeHtml(str) {
+    const d = document.createElement("div");
+    d.textContent = str;
+    return d.innerHTML;
+  }
+
+  document.getElementById("add-form").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const nombre = document.getElementById("f-nombre").value.trim();
+    const emoji = document.getElementById("f-emoji").value.trim() || "📦";
+    const categoria = document.getElementById("f-categoria").value.trim() || null;
+    if (!nombre) return;
+
+    let slug = slugify(nombre);
+    // evita choques de slug añadiendo un sufijo si ya existe
+    const { data: existentes } = await supabase.from("productos").select("slug").ilike("slug", `${slug}%`);
+    if (existentes && existentes.some((r) => r.slug === slug)) {
+      slug = `${slug}-${Math.floor(Math.random() * 900 + 100)}`;
+    }
+
+    const { error } = await supabase.from("productos").insert({ nombre, emoji, categoria, slug, estado: "stock" });
+    if (error) {
+      alert("No se pudo añadir. Revisa la consola.");
+      console.error(error);
+      return;
+    }
+    e.target.reset();
+    cargar();
+  });
+
+  cargar();
+</script>
+</body>
+</html>
