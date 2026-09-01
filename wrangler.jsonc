@@ -2,10 +2,6 @@
   "name": "neveranfc",
   "compatibility_date": "2026-08-01",
   "assets": {
-    "directory": "."
-  },
-
-  "observability": {
-    "enabled": false
+    "directory": "./public"
   }
 }
